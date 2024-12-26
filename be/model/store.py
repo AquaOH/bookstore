@@ -8,6 +8,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class Store:
     def __init__(self):
+        """
+        初始化 Store 类，连接 PostgreSQL 数据库并初始化数据表。
+        """
         # 初始化数据库连接
         self.conn = psycopg2.connect(
             host="127.0.0.1",
@@ -20,6 +23,10 @@ class Store:
         self.init_tables()
 
     def init_tables(self):
+        """
+        初始化数据库表结构，包括 user、book、store、order 和 order_detail 表。
+        如果表已存在，则先删除再重新创建。
+        """
         try:
             with self.conn.cursor() as cursor:
                 # 删除并重新创建 user 表
@@ -109,11 +116,17 @@ class Store:
             self.conn.rollback()
 
     def get_db_conn(self):
-        # 返回数据库连接对象
+        """
+        获取数据库连接对象。
+
+        :return: 数据库连接对象
+        """
         return self.conn
 
     def close(self):
-        # 关闭数据库连接
+        """
+        关闭数据库连接。
+        """
         if self.conn:
             self.conn.close()
 
@@ -125,6 +138,9 @@ init_completed_event = threading.Event()
 
 
 def init_database():
+    """
+    初始化数据库实例。
+    """
     global database_instance
     if database_instance is None:
         # 初始化数据库实例
@@ -132,6 +148,11 @@ def init_database():
 
 
 def get_db_conn():
+    """
+    获取数据库连接对象。如果数据库实例未初始化，则先初始化。
+
+    :return: 数据库连接对象
+    """
     global database_instance
     if database_instance is None:
         init_database()

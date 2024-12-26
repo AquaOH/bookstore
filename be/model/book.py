@@ -1,5 +1,4 @@
 import psycopg2
-
 from be.model import db_conn
 import json
 import logging
@@ -12,6 +11,15 @@ class Book(db_conn.DBConn):
         self.conn.cursor_factory = extras.DictCursor  # 使用 DictCursor
 
     def search_title_in_store(self, title: str, store_id: str, page_num: int, page_size: int):
+        """
+        根据书名在指定商店中搜索书籍，支持分页。
+
+        :param title: 要搜索的书名
+        :param store_id: 商店ID，如果为空字符串，则搜索所有商店
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         try:
             with self.conn.cursor() as cursor:
                 # 查询书籍信息
@@ -45,9 +53,26 @@ class Book(db_conn.DBConn):
             return 530, "{}".format(str(e)), []
 
     def search_title(self, title: str, page_num: int, page_size: int):
+        """
+        根据书名搜索书籍，支持分页。
+
+        :param title: 要搜索的书名
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         return self.search_title_in_store(title, "", page_num, page_size)
 
     def search_tag_in_store(self, tag: str, store_id: str, page_num: int, page_size: int):
+        """
+        根据标签在指定商店中搜索书籍，支持分页。
+
+        :param tag: 要搜索的标签
+        :param store_id: 商店ID，如果为空字符串，则搜索所有商店
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         try:
             with self.conn.cursor() as cursor:
                 # 查询书籍信息
@@ -81,9 +106,26 @@ class Book(db_conn.DBConn):
             return 530, "{}".format(str(e)), []
 
     def search_tag(self, tag: str, page_num: int, page_size: int):
+        """
+        根据标签搜索书籍，支持分页。
+
+        :param tag: 要搜索的标签
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         return self.search_tag_in_store(tag, "", page_num, page_size)
 
     def search_content_in_store(self, content: str, store_id: str, page_num: int, page_size: int):
+        """
+        根据内容在指定商店中搜索书籍，支持分页。
+
+        :param content: 要搜索的内容
+        :param store_id: 商店ID，如果为空字符串，则搜索所有商店
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         # 全文搜索查询（同时匹配 book_intro 和 content 字段）
@@ -126,9 +168,26 @@ class Book(db_conn.DBConn):
         return 200, "ok", result_list
 
     def search_content(self, content: str, page_num: int, page_size: int):
+        """
+        根据内容搜索书籍，支持分页。
+
+        :param content: 要搜索的内容
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         return self.search_content_in_store(content, "", page_num, page_size)
 
     def search_author_in_store(self, author: str, store_id: str, page_num: int, page_size: int):
+        """
+        根据作者在指定商店中搜索书籍，支持分页。
+
+        :param author: 要搜索的作者
+        :param store_id: 商店ID，如果为空字符串，则搜索所有商店
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         try:
             with self.conn.cursor() as cursor:
                 # 查询书籍信息
@@ -162,4 +221,12 @@ class Book(db_conn.DBConn):
             return 530, "{}".format(str(e)), []
 
     def search_author(self, author: str, page_num: int, page_size: int):
+        """
+        根据作者搜索书籍，支持分页。
+
+        :param author: 要搜索的作者
+        :param page_num: 页码，从1开始
+        :param page_size: 每页显示的书籍数量
+        :return: 状态码, 消息, 书籍列表
+        """
         return self.search_author_in_store(author, "", page_num, page_size)

@@ -9,6 +9,9 @@ from be.model import db_conn
 
 class Seller(db_conn.DBConn):
     def __init__(self):
+        """
+        初始化 Seller 类，继承数据库连接。
+        """
         db_conn.DBConn.__init__(self)
 
     def add_book(
@@ -19,6 +22,16 @@ class Seller(db_conn.DBConn):
             book_json_str: str,
             stock_level: int,
     ):
+        """
+        向商店中添加书籍。
+
+        :param user_id: 用户ID
+        :param store_id: 商店ID
+        :param book_id: 书籍ID
+        :param book_json_str: 书籍信息的 JSON 字符串
+        :param stock_level: 库存数量
+        :return: 状态码, 消息
+        """
         try:
             # 检查用户是否存在
             if not self.user_id_exist(user_id):
@@ -82,6 +95,15 @@ class Seller(db_conn.DBConn):
     def add_stock_level(
             self, user_id: str, store_id: str, book_id: str, add_stock_level: int
     ):
+        """
+        增加书籍库存。
+
+        :param user_id: 用户ID
+        :param store_id: 商店ID
+        :param book_id: 书籍ID
+        :param add_stock_level: 增加的库存数量
+        :return: 状态码, 消息
+        """
         try:
             if not self.user_id_exist(user_id):
                 return error.error_non_exist_user_id(user_id)
@@ -121,6 +143,13 @@ class Seller(db_conn.DBConn):
         return 200, "ok"
 
     def create_store(self, user_id: str, store_id: str) -> (int, str):
+        """
+        创建商店。
+
+        :param user_id: 用户ID
+        :param store_id: 商店ID
+        :return: 状态码, 消息
+        """
         try:
             if not self.user_id_exist(user_id):
                 return error.error_non_exist_user_id(user_id)
@@ -141,6 +170,13 @@ class Seller(db_conn.DBConn):
         return 200, "ok"
 
     def deliver(self, user_id: str, order_id: str) -> (int, str):
+        """
+        发货订单。
+
+        :param user_id: 用户ID
+        :param order_id: 订单ID
+        :return: 状态码, 消息
+        """
         try:
             # 使用 DictCursor 将查询结果转换为字典
             cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)

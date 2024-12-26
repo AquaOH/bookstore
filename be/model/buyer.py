@@ -13,6 +13,14 @@ class Buyer(db_conn.DBConn):
         db_conn.DBConn.__init__(self)
 
     def new_order(self, user_id: str, store_id: str, id_and_count: [(str, int)]) -> (int, str, str):
+        """
+        创建新订单。
+
+        :param user_id: 用户ID
+        :param store_id: 商店ID
+        :param id_and_count: 书籍ID和数量的列表，格式为 [(book_id, count), ...]
+        :return: 状态码, 消息, 订单ID
+        """
         order_id = ""
         try:
             # 检查用户是否存在
@@ -105,6 +113,14 @@ class Buyer(db_conn.DBConn):
         return 200, "ok", order_id
 
     def payment(self, user_id: str, password: str, order_id: str) -> (int, str):
+        """
+        支付订单。
+
+        :param user_id: 用户ID
+        :param password: 用户密码
+        :param order_id: 订单ID
+        :return: 状态码, 消息
+        """
         try:
             # 使用 DictCursor 将查询结果转换为字典
             cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -220,6 +236,14 @@ class Buyer(db_conn.DBConn):
         return 200, "ok"
 
     def add_funds(self, user_id: str, password: str, add_value: int) -> (int, str):
+        """
+        为用户增加余额。
+
+        :param user_id: 用户ID
+        :param password: 用户密码
+        :param add_value: 增加的金额
+        :return: 状态码, 消息
+        """
         try:
             self.conn.cursor_factory = psycopg2.extras.DictCursor  # 配置游标返回字典
             cursor = self.conn.cursor()
@@ -252,6 +276,13 @@ class Buyer(db_conn.DBConn):
             return 528, "{}".format(str(e))
 
     def cancel_order(self, user_id: str, order_id: str) -> (int, str):
+        """
+        取消订单。
+
+        :param user_id: 用户ID
+        :param order_id: 订单ID
+        :return: 状态码, 消息
+        """
         try:
             # 使用 DictCursor 将查询结果转换为字典
             cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -399,6 +430,12 @@ class Buyer(db_conn.DBConn):
         return 200, "ok"
 
     def check_hist_order(self, user_id: str):
+        """
+        查询用户的历史订单。
+
+        :param user_id: 用户ID
+        :return: 状态码, 消息, 订单列表
+        """
         try:
             # 使用 DictCursor 将查询结果转换为字典
             cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -535,6 +572,11 @@ class Buyer(db_conn.DBConn):
             return 528, "{}".format(str(e)), None
 
     def auto_cancel_order(self) -> (int, str):
+        """
+        自动取消超时未支付的订单。
+
+        :return: 状态码, 消息
+        """
         try:
             wait = 20  # 超时时间（秒）
             current_time = datetime.now(timezone.utc)  # 使用 UTC 时间
@@ -614,6 +656,12 @@ class Buyer(db_conn.DBConn):
         return 200, "ok"
 
     def is_order_cancelled(self, order_id: str) -> (int, str):
+        """
+        检查订单是否已取消。
+
+        :param order_id: 订单ID
+        :return: 状态码, 消息
+        """
         try:
             # 使用 DictCursor 将查询结果转换为字典
             cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -636,6 +684,15 @@ class Buyer(db_conn.DBConn):
             return 528, "{}".format(str(e))
 
     def search(self, keyword: str, store_id: str = None, page: int = 1, per_page: int = 10) -> (int, str):
+        """
+        根据关键字搜索书籍，支持分页和指定商店。
+
+        :param keyword: 搜索关键字
+        :param store_id: 商店ID（可选）
+        :param page: 页码（从1开始）
+        :param per_page: 每页显示的书籍数量
+        :return: 状态码, 消息, 搜索结果
+        """
         try:
             cursor = self.conn.cursor()
             query = """
@@ -658,6 +715,13 @@ class Buyer(db_conn.DBConn):
             return 530, "{}".format(str(e))
 
     def receive(self, user_id: str, order_id: str) -> (int, str):
+        """
+        确认收货。
+
+        :param user_id: 用户ID
+        :param order_id: 订单ID
+        :return: 状态码, 消息
+        """
         try:
             # 使用 DictCursor 将查询结果转换为字典
             cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
