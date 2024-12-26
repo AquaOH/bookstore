@@ -12,7 +12,6 @@ def seller_create_store():
     user_id: str = request.json.get("user_id")
     store_id: str = request.json.get("store_id")
     s = seller.Seller()
-    print("user_id: "+ user_id)
     code, message = s.create_store(user_id, store_id)
     return jsonify({"message": message}), code
 

@@ -108,6 +108,7 @@ class TestSearch:
         key = "hello11"
         book_intro = f"{str(uuid.uuid1())} {key} {str(uuid.uuid1())}"
         self.book_example.book_intro = book_intro
+        print(self.book_example)
         self.seller.add_book(self.store_id, 0, self.book_example)
 
         code = self.rs.request_search_content(content=key)
@@ -120,6 +121,7 @@ class TestSearch:
         key = "hello12"
         book_intro = f"{str(uuid.uuid1())} {key} {str(uuid.uuid1())}"
         self.book_example.book_intro = book_intro
+        print(self.book_example)
         self.seller.add_book(self.store_id, 0, self.book_example)
 
         code = self.rs.request_search_content_in_store(content=key, store_id=self.store_id)

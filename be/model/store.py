@@ -39,13 +39,29 @@ class Store:
                 cursor.execute("""
                     CREATE TABLE "book" (
                         id SERIAL PRIMARY KEY,
-                        book_id TEXT,    -- 书籍ID
-                        title TEXT NOT NULL,      -- 书名
-                        author TEXT,              -- 作者
-                        content TEXT,             -- 内容
-                        tags TEXT,                -- 标签
-                        picture TEXT              -- 图片链接
+                        book_id TEXT NOT NULL,    -- 书籍ID
+                        title TEXT NOT NULL,             -- 书名
+                        author TEXT,                     -- 作者
+                        publisher TEXT,                  -- 出版社
+                        content TEXT,                    -- 内容
+                        original_title TEXT,             -- 原书名
+                        translator TEXT,                 -- 译者
+                        pub_year TEXT,                   -- 出版年份
+                        pages INTEGER,                   -- 页数
+                        price INTEGER,                   -- 价格
+                        currency_unit TEXT,              -- 货币单位
+                        binding TEXT,                    -- 装帧
+                        isbn TEXT,                -- ISBN号
+                        author_intro TEXT,               -- 作者简介
+                        book_intro TEXT,                 -- 书籍简介
+                        tags JSONB,                      -- 标签（JSON数组）
+                        pictures JSONB                   -- 图片链接（JSON数组）
                     );
+                """)
+
+                # 创建全文搜索索引
+                cursor.execute("""
+                    CREATE INDEX idx_content ON book USING GIN (to_tsvector('english', content));
                 """)
 
                 # 删除并重新创建 store 表
@@ -63,11 +79,12 @@ class Store:
                 cursor.execute("""
                     CREATE TABLE "order" (
                         id SERIAL PRIMARY KEY,
-                        order_id TEXT ,  
+                        order_id TEXT,  
                         store_id TEXT,
                         user_id TEXT,
-                        status TEXT NOT NULL,      -- 订单状态
-                        price NUMERIC NOT NULL     -- 订单总价
+                        create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- 订单创建时间
+                        price NUMERIC NOT NULL,    -- 订单总价
+                        status TEXT NOT NULL     -- 订单状态
                     );
                 """)
 

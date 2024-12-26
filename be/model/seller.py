@@ -20,22 +20,46 @@ class Seller(db_conn.DBConn):
             stock_level: int,
     ):
         try:
+            # 检查用户是否存在
             if not self.user_id_exist(user_id):
                 return error.error_non_exist_user_id(user_id)
+            # 检查商店是否存在
             if not self.store_id_exist(store_id):
                 return error.error_non_exist_store_id(store_id)
+            # 检查书籍是否已存在于商店中
             if self.book_id_exist(store_id, book_id):
                 return error.error_exist_book_id(book_id)
 
-            # 插入书籍信息到 book 表
+            # 解析书籍信息
             book_data = json.loads(book_json_str)
+
+            # 插入书籍信息到 book 表
             with self.conn.cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO book (book_id,title, author, content, tags, picture)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id;
-                """, (book_id, book_data.get("title"), book_data.get("author"),
-                      book_data.get("content"), book_data.get("tags"), book_data.get("picture")))
+                    INSERT INTO book (
+                        book_id, title, author, publisher, content, original_title, translator, pub_year, pages, price, currency_unit, binding, isbn, author_intro, book_intro, tags, pictures
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    );
+                """, (
+                    book_id,
+                    book_data.get("title"),
+                    book_data.get("author"),
+                    book_data.get("publisher"),
+                    book_data.get("content"),
+                    book_data.get("original_title"),
+                    book_data.get("translator"),
+                    book_data.get("pub_year"),
+                    book_data.get("pages"),
+                    book_data.get("price"),
+                    book_data.get("currency_unit"),
+                    book_data.get("binding"),
+                    book_data.get("isbn"),
+                    book_data.get("author_intro"),
+                    book_data.get("book_intro"),
+                    json.dumps(book_data.get("tags", [])),  # 将 tags 转换为 JSON 字符串
+                    json.dumps(book_data.get("pictures", []))  # 将 pictures 转换为 JSON 字符串
+                ))
 
                 # 更新 store 表的 books 字段
                 cursor.execute("""
