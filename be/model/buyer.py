@@ -253,82 +253,80 @@ class Buyer(db_conn.DBConn):
 
     def cancel_order(self, user_id: str, order_id: str) -> (int, str):
         try:
-            cursor = self.conn.cursor()
+            # 使用 DictCursor 将查询结果转换为字典
+            cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+            # 查询订单信息（状态为 0）
             cursor.execute("""
                 SELECT * FROM "order"
-                WHERE order_id = %s AND status = 0
+                WHERE order_id = %s AND status = '0'
             """, (order_id,))
-            result = cursor.fetchone()
-            if result:
-                buyer_id = result["user_id"]
+            order = cursor.fetchone()
+
+            if order:
+                # 检查用户权限
+                buyer_id = order["user_id"]
                 if buyer_id != user_id:
                     self.conn.rollback()
+                    logging.error(f"用户权限不足: {user_id}")
                     return error.error_authorization_fail()
-                store_id = result["store_id"]
-                price = result["price"]
 
+                store_id = order["store_id"]
+                price = order["price"]
+
+                # 删除订单
                 cursor.execute("""
                     DELETE FROM "order"
-                    WHERE order_id = %s AND status = 0
+                    WHERE order_id = %s AND status = '0'
                 """, (order_id,))
                 if cursor.rowcount == 0:
                     self.conn.rollback()
+                    logging.error(f"删除订单失败: {order_id}")
                     return error.error_invalid_order_id(order_id)
-
-                cursor.execute("""
-                    SELECT book_id, count FROM order_detail
-                    WHERE order_id = %s
-                """, (order_id,))
-                order_details = cursor.fetchall()
-                for detail in order_details:
-                    book_id = detail["book_id"]
-                    count = detail["count"]
-                    cursor.execute("""
-                        UPDATE store
-                        SET books = jsonb_set(
-                            books,
-                            ('{' || idx-1 || ',stock_level}')::text[],
-                            to_jsonb((books->>idx-1->>'stock_level')::int + %s)
-                        )
-                        FROM (
-                            SELECT idx
-                            FROM store, jsonb_array_elements(books) WITH ORDINALITY arr(elem, idx)
-                            WHERE store_id = %s AND elem->>'book_id' = %s
-                        ) sub
-                        WHERE store.store_id = %s
-                    """, (count, store_id, book_id, store_id))
-                    if cursor.rowcount == 0:
-                        self.conn.rollback()
-                        return error.error_stock_level_low(book_id)
-
-                cursor.execute("""
-                    INSERT INTO "order" (order_id, user_id, store_id, price, status)
-                    VALUES (%s, %s, %s, %s, 4)
-                """, (order_id, user_id, store_id, price))
-                self.conn.commit()
             else:
+                # 查询订单信息（状态为 1、2、3）
                 cursor.execute("""
                     SELECT * FROM "order"
-                    WHERE order_id = %s AND status IN (1, 2, 3)
+                    WHERE order_id = %s AND status IN ('1', '2', '3')
                 """, (order_id,))
-                result = cursor.fetchone()
-                if result:
-                    buyer_id = result["user_id"]
+                order = cursor.fetchone()
+
+                if order:
+                    # 检查用户权限
+                    buyer_id = order["user_id"]
                     if buyer_id != user_id:
                         self.conn.rollback()
+                        logging.error(f"用户权限不足: {user_id}")
                         return error.error_authorization_fail()
-                    store_id = result["store_id"]
-                    price = result["price"]
 
+                    store_id = order["store_id"]
+                    price = order["price"]
+
+                    # 查询商店信息
+                    cursor.execute("""
+                        SELECT * FROM "store"
+                        WHERE store_id = %s
+                    """, (store_id,))
+                    store = cursor.fetchone()
+                    if store is None:
+                        self.conn.rollback()
+                        logging.error(f"商店不存在: {store_id}")
+                        return error.error_non_exist_store_id(store_id)
+
+                    seller_id = store["user_id"]
+
+                    # 扣减卖家余额
                     cursor.execute("""
                         UPDATE "user"
                         SET balance = balance - %s
-                        WHERE user_id = (SELECT user_id FROM store WHERE store_id = %s)
-                    """, (price, store_id))
+                        WHERE user_id = %s
+                    """, (price, seller_id))
                     if cursor.rowcount == 0:
                         self.conn.rollback()
-                        return error.error_non_exist_user_id(buyer_id)
+                        logging.error(f"扣减卖家余额失败: {seller_id}")
+                        return error.error_non_exist_user_id(seller_id)
 
+                    # 增加买家余额
                     cursor.execute("""
                         UPDATE "user"
                         SET balance = balance + %s
@@ -336,156 +334,250 @@ class Buyer(db_conn.DBConn):
                     """, (price, buyer_id))
                     if cursor.rowcount == 0:
                         self.conn.rollback()
+                        logging.error(f"增加买家余额失败: {buyer_id}")
                         return error.error_non_exist_user_id(buyer_id)
 
+                    # 删除订单
                     cursor.execute("""
                         DELETE FROM "order"
-                        WHERE order_id = %s AND status IN (1, 2, 3)
+                        WHERE order_id = %s AND status IN ('1', '2', '3')
                     """, (order_id,))
                     if cursor.rowcount == 0:
                         self.conn.rollback()
+                        logging.error(f"删除订单失败: {order_id}")
                         return error.error_invalid_order_id(order_id)
-
-                    cursor.execute("""
-                        INSERT INTO "order" (order_id, user_id, store_id, price, status)
-                        VALUES (%s, %s, %s, %s, 4)
-                    """, (order_id, user_id, store_id, price))
-                    self.conn.commit()
                 else:
                     self.conn.rollback()
+                    logging.error(f"订单不存在: {order_id}")
                     return error.error_invalid_order_id(order_id)
+
+            # 恢复库存
+            cursor.execute("""
+                SELECT book_id, count FROM order_detail
+                WHERE order_id = %s
+            """, (order_id,))
+            order_details = cursor.fetchall()
+
+            for detail in order_details:
+                book_id = detail["book_id"]
+                count = detail["count"]
+
+                # 更新库存
+                cursor.execute("""
+                    UPDATE store
+                    SET books = jsonb_set(
+                        books,
+                        ('{' || idx-1 || ',stock_level}')::text[],
+                        to_jsonb((elem->>'stock_level')::int + %s)
+                    )
+                    FROM (
+                        SELECT idx, elem
+                        FROM store, jsonb_array_elements(books) WITH ORDINALITY arr(elem, idx)
+                        WHERE store_id = %s AND elem->>'book_id' = %s
+                    ) sub
+                    WHERE store.store_id = %s
+                """, (count, store_id, book_id, store_id))
+                if cursor.rowcount == 0:
+                    self.conn.rollback()
+                    logging.error(f"恢复库存失败: {book_id}")
+                    return error.error_stock_level_low(book_id)
+
+            # 插入取消订单记录
+            cursor.execute("""
+                INSERT INTO "order" (order_id, user_id, store_id, price, status)
+                VALUES (%s, %s, %s, %s, '4')
+            """, (order_id, user_id, store_id, price))
+
+            # 提交事务
+            self.conn.commit()
+            logging.info(f"取消订单成功: 订单 {order_id}, 用户 {user_id}")
         except Exception as e:
             self.conn.rollback()
+            logging.error(f"取消订单异常: {str(e)}")
             return 528, "{}".format(str(e))
+
         return 200, "ok"
 
     def check_hist_order(self, user_id: str):
         try:
+            # 使用 DictCursor 将查询结果转换为字典
+            cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+            # 检查用户是否存在
             if not self.user_id_exist(user_id):
-                return error.error_non_exist_user_id(user_id)
+                return error.error_non_exist_user_id(user_id), None
+
             ans = []
-            cursor = self.conn.cursor()
+
+            # 查询未支付订单
             cursor.execute("""
                 SELECT * FROM "order"
-                WHERE user_id = %s AND status = 0
+                WHERE user_id = %s AND status = '0'
             """, (user_id,))
             unpaid_orders = cursor.fetchall()
+
             for order in unpaid_orders:
                 tmp_details = []
                 order_id = order["order_id"]
+
+                # 查询订单详情
                 cursor.execute("""
-                    SELECT book_id, count, price FROM order_detail
+                    SELECT * FROM order_detail
                     WHERE order_id = %s
                 """, (order_id,))
                 order_details = cursor.fetchall()
+
+                if not order_details:
+                    return error.error_invalid_order_id(order_id), None
+
                 for detail in order_details:
                     tmp_details.append({
                         "book_id": detail["book_id"],
                         "count": detail["count"],
-                        "price": detail["price"]
+                        "price": float(detail["price"])  # 将 Decimal 转换为 float
                     })
+
                 ans.append({
                     "status": "unpaid",
                     "order_id": order_id,
                     "buyer_id": order["user_id"],
                     "store_id": order["store_id"],
-                    "total_price": order["price"],
+                    "total_price": float(order["price"]),  # 将 Decimal 转换为 float
                     "details": tmp_details
                 })
 
+            # 查询已支付、已发货、已收货订单
+            books_status_list = ["unsent", "sent but not received", "received"]
             cursor.execute("""
                 SELECT * FROM "order"
-                WHERE user_id = %s AND status IN (1, 2, 3)
+                WHERE user_id = %s AND status IN ('1', '2', '3')
             """, (user_id,))
             paid_orders = cursor.fetchall()
-            books_status_list = ["unsent", "sent but not received", "received"]
+
             for order in paid_orders:
                 tmp_details = []
                 order_id = order["order_id"]
+
+                # 查询订单详情
                 cursor.execute("""
-                    SELECT book_id, count, price FROM order_detail
+                    SELECT * FROM order_detail
                     WHERE order_id = %s
                 """, (order_id,))
                 order_details = cursor.fetchall()
+
+                if not order_details:
+                    return error.error_invalid_order_id(order_id), None
+
                 for detail in order_details:
                     tmp_details.append({
                         "book_id": detail["book_id"],
                         "count": detail["count"],
-                        "price": detail["price"]
+                        "price": float(detail["price"])  # 将 Decimal 转换为 float
                     })
+
                 ans.append({
+                    "status": books_status_list[int(order["status"]) - 1],
                     "order_id": order_id,
                     "buyer_id": order["user_id"],
                     "store_id": order["store_id"],
-                    "total_price": order["price"],
-                    "status": books_status_list[order["status"] - 1],
+                    "total_price": float(order["price"]),  # 将 Decimal 转换为 float
                     "details": tmp_details
                 })
 
+            # 查询已取消订单
             cursor.execute("""
                 SELECT * FROM "order"
-                WHERE user_id = %s AND status = 4
+                WHERE user_id = %s AND status = '4'
             """, (user_id,))
             cancelled_orders = cursor.fetchall()
+
             for order in cancelled_orders:
                 tmp_details = []
                 order_id = order["order_id"]
+
+                # 查询订单详情
                 cursor.execute("""
-                    SELECT book_id, count, price FROM order_detail
+                    SELECT * FROM order_detail
                     WHERE order_id = %s
                 """, (order_id,))
                 order_details = cursor.fetchall()
+
+                if not order_details:
+                    return error.error_invalid_order_id(order_id), None
+
                 for detail in order_details:
                     tmp_details.append({
                         "book_id": detail["book_id"],
                         "count": detail["count"],
-                        "price": detail["price"]
+                        "price": float(detail["price"])  # 将 Decimal 转换为 float
                     })
+
                 ans.append({
                     "status": "cancelled",
                     "order_id": order_id,
                     "buyer_id": order["user_id"],
                     "store_id": order["store_id"],
-                    "total_price": order["price"],
+                    "total_price": float(order["price"]),  # 将 Decimal 转换为 float
                     "details": tmp_details
                 })
 
+            # 提交事务
+            self.conn.commit()
+
+            if not ans:
+                return 200, "ok", "No orders found"
+            else:
+                return 200, "ok", ans
+
         except Exception as e:
             self.conn.rollback()
+            logging.error(f"查询历史订单异常: {str(e)}")
             return 528, "{}".format(str(e)), None
-        if not ans:
-            return 200, "ok", "No orders found"
-        else:
-            return 200, "ok", ans
 
     def auto_cancel_order(self) -> (int, str):
         try:
             wait = 20  # 超时时间（秒）
-            current_time = datetime.now(timezone.utc)
-            interval = current_time - timedelta(seconds=wait)
-            cursor = self.conn.cursor()
+            current_time = datetime.now(timezone.utc)  # 使用 UTC 时间
+            interval = current_time - timedelta(seconds=wait)  # 计算超时时间点
+
+            # 使用 DictCursor 将查询结果转换为字典
+            cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
             # 查询超时未支付的订单
             cursor.execute("""
                 SELECT * FROM "order"
-                WHERE create_time <= %s AND status = 0
+                WHERE create_time <= %s AND status = '0'
             """, (interval,))
             orders_to_cancel = cursor.fetchall()
 
-            # 遍历需要取消的订单
             for order in orders_to_cancel:
                 order_id = order["order_id"]
+                user_id = order["user_id"]
                 store_id = order["store_id"]
+                price = order["price"]
 
-                # 恢复库存
+                # 删除订单
+                cursor.execute("""
+                    DELETE FROM "order"
+                    WHERE order_id = %s AND status = '0'
+                """, (order_id,))
+                if cursor.rowcount == 0:
+                    self.conn.rollback()
+                    logging.error(f"删除订单失败: {order_id}")
+                    return error.error_invalid_order_id(order_id)
+
+                # 查询订单详情
                 cursor.execute("""
                     SELECT book_id, count FROM order_detail
                     WHERE order_id = %s
                 """, (order_id,))
                 order_details = cursor.fetchall()
+
                 for detail in order_details:
                     book_id = detail["book_id"]
                     count = detail["count"]
+
+                    # 更新库存
                     cursor.execute("""
                         UPDATE store
                         SET books = jsonb_set(
@@ -502,23 +594,46 @@ class Buyer(db_conn.DBConn):
                     """, (count, store_id, book_id, store_id))
                     if cursor.rowcount == 0:
                         self.conn.rollback()
+                        logging.error(f"恢复库存失败: 书籍 {book_id}, 商店 {store_id}")
                         return error.error_stock_level_low(book_id)
 
-                # 更新订单状态为已取消（状态 4）
+                # 插入取消订单记录
                 cursor.execute("""
-                    UPDATE "order"
-                    SET status = 4
-                    WHERE order_id = %s AND status = 0
-                """, (order_id,))
-                if cursor.rowcount == 0:
-                    self.conn.rollback()
-                    return error.error_invalid_order_id(order_id)
+                    INSERT INTO "order" (order_id, user_id, store_id, price, status)
+                    VALUES (%s, %s, %s, %s, '4')
+                """, (order_id, user_id, store_id, price))
 
+            # 提交事务
             self.conn.commit()
+            logging.info(f"自动取消订单成功: 共取消 {len(orders_to_cancel)} 个订单")
         except Exception as e:
             self.conn.rollback()
+            logging.error(f"自动取消订单异常: {str(e)}")
             return 528, "{}".format(str(e))
+
         return 200, "ok"
+
+    def is_order_cancelled(self, order_id: str) -> (int, str):
+        try:
+            # 使用 DictCursor 将查询结果转换为字典
+            cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+            # 查询取消订单
+            cursor.execute("""
+                SELECT * FROM "order"
+                WHERE order_id = %s AND status = '4'
+            """, (order_id,))
+            result = cursor.fetchone()
+
+            if result is None:
+                logging.error(f"订单未取消: {order_id}")
+                return error.error_auto_cancel_fail(order_id)
+            else:
+                logging.info(f"订单已取消: {order_id}")
+                return 200, "ok"
+        except Exception as e:
+            logging.error(f"查询订单取消状态异常: {str(e)}")
+            return 528, "{}".format(str(e))
 
     def search(self, keyword: str, store_id: str = None, page: int = 1, per_page: int = 10) -> (int, str):
         try:
@@ -544,37 +659,58 @@ class Buyer(db_conn.DBConn):
 
     def receive(self, user_id: str, order_id: str) -> (int, str):
         try:
-            cursor = self.conn.cursor()
+            # 使用 DictCursor 将查询结果转换为字典
+            cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+            # 查询订单信息
             cursor.execute("""
                 SELECT * FROM "order"
-                WHERE order_id = %s AND status IN (1, 2, 3)
+                WHERE order_id = %s AND status IN ('1', '2', '3')
             """, (order_id,))
             result = cursor.fetchone()
             if result is None:
                 self.conn.rollback()
+                logging.error(f"订单不存在或状态无效: {order_id}")
                 return error.error_invalid_order_id(order_id)
-            buyer_id = result["user_id"]
-            paid_status = result["status"]
 
+            buyer_id = result["user_id"]  # 通过字段名访问
+            paid_status = result["status"]  # 通过字段名访问
+
+            # 检查用户权限
             if buyer_id != user_id:
                 self.conn.rollback()
+                logging.error(f"用户权限不足: {user_id}")
                 return error.error_authorization_fail()
-            if paid_status == 1:
+
+            # 检查订单状态
+            if paid_status == '1':
                 self.conn.rollback()
+                logging.error(f"订单未发货: {order_id}")
                 return error.error_books_not_deliver()
-            if paid_status == 3:
+            if paid_status == '3':
                 self.conn.rollback()
+                logging.error(f"订单已收货: {order_id}")
                 return error.error_books_repeat_receive()
 
+            # 更新订单状态为已收货（状态 3）
             cursor.execute("""
                 UPDATE "order"
-                SET status = 3
+                SET status = '3'
                 WHERE order_id = %s
             """, (order_id,))
+            if cursor.rowcount == 0:
+                self.conn.rollback()
+                logging.error(f"更新订单状态失败: {order_id}")
+                return error.error_invalid_order_id(order_id)
+
+            # 提交事务
             self.conn.commit()
+            logging.info(f"收货成功: 订单 {order_id}, 用户 {user_id}")
         except Exception as e:
             self.conn.rollback()
+            logging.error(f"收货异常: {str(e)}")
             return 528, "{}".format(str(e))
+
         return 200, "ok"
 
 

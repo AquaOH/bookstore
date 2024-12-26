@@ -142,31 +142,45 @@ class Seller(db_conn.DBConn):
 
     def deliver(self, user_id: str, order_id: str) -> (int, str):
         try:
-            with self.conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT status
-                    FROM "order"
-                    WHERE order_id = %s
-                    AND status IN (1, 2, 3);
-                """, (order_id,))
-                result = cursor.fetchone()
+            # 使用 DictCursor 将查询结果转换为字典
+            cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-                if result is None:
-                    return error.error_invalid_order_id(order_id)
-                status = result[0]
+            # 查询订单信息
+            cursor.execute("""
+                SELECT * FROM "order"
+                WHERE order_id = %s AND (status = '1' OR status = '2' OR status = '3')
+            """, (order_id,))
+            order = cursor.fetchone()
+            if order is None:
+                self.conn.rollback()
+                logging.error(f"订单不存在或状态无效: {order_id}")
+                return error.error_invalid_order_id(order_id)
 
-                if status == 2 or status == 3:
-                    return error.error_books_repeat_deliver()
+            status = order["status"]  # 通过字段名访问
 
-                cursor.execute("""
-                    UPDATE "order"
-                    SET status = 2
-                    WHERE order_id = %s;
-                """, (order_id,))
+            # 检查订单状态
+            if status == '2' or status == '3':
+                self.conn.rollback()
+                logging.error(f"订单已发货或已完成: {order_id}")
+                return error.error_books_repeat_deliver()
 
-                self.conn.commit()
+            # 更新订单状态为已发货（状态 2）
+            cursor.execute("""
+                UPDATE "order"
+                SET status = '2'
+                WHERE order_id = %s
+            """, (order_id,))
+            if cursor.rowcount == 0:
+                self.conn.rollback()
+                logging.error(f"更新订单状态失败: {order_id}")
+                return error.error_invalid_order_id(order_id)
+
+            # 提交事务
+            self.conn.commit()
+            logging.info(f"发货成功: 订单 {order_id}, 用户 {user_id}")
         except Exception as e:
-            logging.error(str(e))
             self.conn.rollback()
-            return 530, "{}".format(str(e))
+            logging.error(f"发货异常: {str(e)}")
+            return 528, "{}".format(str(e))
+
         return 200, "ok"
