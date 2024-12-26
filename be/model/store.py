@@ -41,6 +41,9 @@ class Store:
                     );
                 """)
 
+                # 在 user_id 上创建唯一升序索引（主键已自动创建索引）
+                cursor.execute('CREATE UNIQUE INDEX idx_user_id ON "user" (user_id);')
+
                 # 删除并重新创建 book 表
                 cursor.execute('DROP TABLE IF EXISTS "book";')
                 cursor.execute("""
@@ -66,9 +69,20 @@ class Store:
                     );
                 """)
 
-                # 创建全文搜索索引
+                # 在 title 上创建普通索引
+                cursor.execute('CREATE INDEX idx_title ON "book" (title);')
+
+                # 在 tags 上创建 GIN 索引
+                cursor.execute('CREATE INDEX idx_tags ON "book" USING GIN (tags);')
+
+                # 在 book_intro 上创建 GIN 索引，支持全文搜索
                 cursor.execute("""
-                    CREATE INDEX idx_content ON book USING GIN (to_tsvector('english', content));
+                    CREATE INDEX idx_book_intro ON "book" USING GIN (to_tsvector('english', book_intro));
+                """)
+
+                # 在 content 上创建 GIN 索引，支持全文搜索
+                cursor.execute("""
+                    CREATE INDEX idx_content ON "book" USING GIN (to_tsvector('english', content));
                 """)
 
                 # 删除并重新创建 store 表
@@ -80,6 +94,9 @@ class Store:
                         books JSONB                 -- 书籍信息，使用 JSONB 类型存储
                     );
                 """)
+
+                # 在 store_id 上创建唯一升序索引（主键已自动创建索引）
+                cursor.execute('CREATE UNIQUE INDEX idx_store_id ON "store" (store_id);')
 
                 # 删除并重新创建 order 表
                 cursor.execute('DROP TABLE IF EXISTS "order";')
